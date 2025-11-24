@@ -169,7 +169,7 @@ class RLVRConfig(PPOConfig):
             self.actor_train.worker_cls = "roll.pipeline.rlvr.actor_worker.ActorWorker"
         if self.actor_infer.worker_cls is None:
             self.actor_infer.worker_cls = "roll.pipeline.rlvr.actor_worker.ActorWorker"
-        if self.reference.worker_cls is None:
+        if not self.disable_reference and self.reference.worker_cls is None:
             self.reference.worker_cls = "roll.pipeline.rlvr.actor_worker.ActorWorker"
         if self.critic.worker_cls is None:
             self.critic.worker_cls = "roll.pipeline.base_worker.CriticWorker"

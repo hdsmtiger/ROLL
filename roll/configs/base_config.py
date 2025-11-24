@@ -308,6 +308,9 @@ class PPOConfig(BaseConfig):
     reference: WorkerConfig = field(
         default_factory=WorkerConfig, metadata={"help": "Configuration for the reference role."}
     )
+    disable_reference: bool = field(
+        default=False, metadata={"help": "Whether to disable the reference model."}
+    )
 
     async_generation_ratio: float = field(
         default=0,
@@ -389,11 +392,12 @@ class PPOConfig(BaseConfig):
         if (
             self.actor_train.model_args.model_name_or_path is None
             or self.actor_infer.model_args.model_name_or_path is None
-            or self.reference.model_args.model_name_or_path is None
+            or (not self.disable_reference and self.reference.model_args.model_name_or_path is None)
         ):
             self.actor_train.model_args.model_name_or_path = self.pretrain
             self.actor_infer.model_args.model_name_or_path = self.pretrain
-            self.reference.model_args.model_name_or_path = self.pretrain
+            if not self.disable_reference:
+                self.reference.model_args.model_name_or_path = self.pretrain
 
         if self.critic.model_args.model_name_or_path is None:
             self.critic.model_args.model_name_or_path = self.reward_pretrain
