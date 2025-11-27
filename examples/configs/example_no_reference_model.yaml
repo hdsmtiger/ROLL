@@ -1,0 +1,92 @@
+# Example configuration for disabling reference model
+# This can be useful for:
+# 1. Saving GPU memory by not loading a reference model
+# 2. Training without KL penalty from a reference model
+# 3. Faster training when reference model is not needed
+
+# Basic experiment settings
+exp_name: example_no_reference_model
+seed: 42
+output_dir: ./output/example_no_reference_model
+
+# Disable reference model - this is the key setting!
+use_reference_model: false
+
+# Model configuration
+pretrain: /path/to/your/model
+
+# Actor configurations
+actor_train:
+  name: actor_train
+  worker_cls: roll.pipeline.base_worker.ActorWorker
+  model_args:
+    model_name_or_path: /path/to/your/model
+    model_type: causal
+    dtype: bf16
+  training_args:
+    per_device_train_batch_size: 4
+    gradient_accumulation_steps: 4
+    learning_rate: 1e-6
+    max_steps: 1000
+  device_mapping: [0, 1, 2, 3]
+
+actor_infer:
+  name: actor_infer
+  worker_cls: roll.pipeline.base_worker.ActorWorker
+  model_args:
+    model_name_or_path: /path/to/your/model
+    model_type: causal
+    dtype: bf16
+  generating_args:
+    do_sample: true
+    temperature: 1.0
+    max_new_tokens: 512
+  device_mapping: [0, 1, 2, 3]
+
+# Critic configuration
+critic:
+  name: critic
+  worker_cls: roll.pipeline.base_worker.ActorWorker
+  model_args:
+    model_name_or_path: /path/to/your/model
+    model_type: causal
+    dtype: bf16
+  training_args:
+    per_device_train_batch_size: 4
+    gradient_accumulation_steps: 4
+    learning_rate: 1e-6
+    max_steps: 1000
+  device_mapping: [4, 5, 6, 7]
+
+# Reference configuration (will be ignored when use_reference_model is false)
+# You can still keep this section for when you want to enable the reference model later
+reference:
+  name: reference
+  worker_cls: roll.pipeline.base_worker.ActorWorker
+  model_args:
+    model_name_or_path: /path/to/your/model
+    model_type: causal
+    dtype: bf16
+  device_mapping: [4, 5, 6, 7]
+
+# Training parameters
+rollout_batch_size: 128
+max_steps: 1000
+save_steps: 100
+logging_steps: 10
+eval_steps: 100
+
+# PPO parameters
+ppo_epochs: 1
+kl_penalty: "kl"  # This will be effectively ignored when use_reference_model is false
+init_kl_coef: 0.2  # This will be effectively ignored when use_reference_model is false
+
+# Data parameters
+prompt_length: 512
+response_length: 512
+
+# Note: When use_reference_model is set to false:
+# 1. No reference model will be loaded, saving GPU memory
+# 2. KL penalty calculation will be skipped (beta will be set to 0)
+# 3. Training may be faster due to reduced computation
+# 4. The behavior of the model may differ from training with a reference model

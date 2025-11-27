@@ -34,6 +34,10 @@ class DPOConfig(BaseConfig):
     reference: WorkerConfig = field(
         default_factory=WorkerConfig, metadata={"help": "Configuration for the reference role."}
     )
+    use_reference_model: bool = field(
+        default=True,
+        metadata={"help": "Whether to use reference model for KL penalty calculation."}
+    )
 
     # dpo related
     ipo: bool = field(

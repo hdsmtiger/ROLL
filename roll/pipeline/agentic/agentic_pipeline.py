@@ -60,14 +60,19 @@ class AgenticPipeline(BasePipeline):
             resource_manager=self.resource_manager,
             worker_config=self.pipeline_config.actor_infer,
         )
-        self.reference: Any = Cluster(
-            name=self.pipeline_config.reference.name,
-            worker_cls=self.pipeline_config.reference.worker_cls,
-            resource_manager=self.resource_manager,
-            worker_config=self.pipeline_config.reference,
-        )
+        # Only create reference cluster if use_reference_model is True
+        self.reference = None
+        if self.pipeline_config.use_reference_model:
+            self.reference: Any = Cluster(
+                name=self.pipeline_config.reference.name,
+                worker_cls=self.pipeline_config.reference.worker_cls,
+                resource_manager=self.resource_manager,
+                worker_config=self.pipeline_config.reference,
+            )
 
-        download_clusters = [self.actor_train, self.actor_infer, self.reference]
+        download_clusters = [self.actor_train, self.actor_infer]
+        if self.pipeline_config.use_reference_model:
+            download_clusters.append(self.reference)
         if self.pipeline_config.adv_estimator == "gae":
             self.critic: Any = Cluster(
                 name=self.pipeline_config.critic.name,
@@ -110,7 +115,8 @@ class AgenticPipeline(BasePipeline):
 
         self.actor_infer.initialize(pipeline_config=self.pipeline_config, blocking=True)
 
-        refs.extend(self.reference.initialize(pipeline_config=self.pipeline_config, blocking=True))
+        if self.pipeline_config.use_reference_model:
+            refs.extend(self.reference.initialize(pipeline_config=self.pipeline_config, blocking=True))
         self.set_model_update_pair(
             src_cluster=self.actor_train,
             tgt_cluster=self.actor_infer,
@@ -172,15 +178,17 @@ class AgenticPipeline(BasePipeline):
                 batch = self.adjust_batch(batch, mode=self.pipeline_config.batch_adjust_mode)
                 metrics.update(reduce_metrics(batch.meta_info.pop("metrics", {})))
 
-                with Timer(name="cal_ref_log_probs", logger=None) as cal_timer:
-                    ref_log_probs_refs: List[ray.ObjectRef] = self.reference.compute_log_probs(batch, blocking=False)
-                    ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs)
-                    ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
-                    batch = batch.union(ref_log_probs)
-                    avg_ref_log_prob = masked_mean(batch.batch["ref_log_probs"], batch.batch["response_mask"][:, 1:])
-                    metrics.update(reduce_metrics(ref_log_probs.meta_info.pop("metrics", {})))
-                    metrics.update({"critic/ref_log_prob/mean": avg_ref_log_prob.item()})
-                metrics["time/ref_log_probs_values_reward"] = cal_timer.last
+                # Only compute reference log probabilities if use_reference_model is True
+                if self.pipeline_config.use_reference_model:
+                    with Timer(name="cal_ref_log_probs", logger=None) as cal_timer:
+                        ref_log_probs_refs: List[ray.ObjectRef] = self.reference.compute_log_probs(batch, blocking=False)
+                        ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs)
+                        ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
+                        batch = batch.union(ref_log_probs)
+                        avg_ref_log_prob = masked_mean(batch.batch["ref_log_probs"], batch.batch["response_mask"][:, 1:])
+                        metrics.update(reduce_metrics(ref_log_probs.meta_info.pop("metrics", {})))
+                        metrics.update({"critic/ref_log_prob/mean": avg_ref_log_prob.item()})
+                    metrics["time/ref_log_probs_values_reward"] = cal_timer.last
 
                 with Timer(name="cal_old_log_probs_values", logger=None) as cal_old_logpb_timer:
                     # TODO: use engine log_probs as old_log_probs

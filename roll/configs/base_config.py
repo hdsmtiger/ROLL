@@ -308,6 +308,10 @@ class PPOConfig(BaseConfig):
     reference: WorkerConfig = field(
         default_factory=WorkerConfig, metadata={"help": "Configuration for the reference role."}
     )
+    use_reference_model: bool = field(
+        default=True,
+        metadata={"help": "Whether to use reference model for KL penalty calculation."}
+    )
 
     async_generation_ratio: float = field(
         default=0,

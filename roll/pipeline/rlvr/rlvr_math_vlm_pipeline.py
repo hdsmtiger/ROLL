@@ -222,7 +222,9 @@ class RLVRMathVLMPipeline(BasePipeline):
             worker_config=self.pipeline_config.actor_infer,
         )
         # use unwrapped model as reference for lora training
-        if not self.is_lora:
+        # Only create reference cluster if use_reference_model is True and not lora
+        self.reference = None
+        if not self.is_lora and self.pipeline_config.use_reference_model:
             self.reference: Any = Cluster(
                 name=self.pipeline_config.reference.name,
                 worker_cls=self.pipeline_config.reference.worker_cls,
@@ -359,28 +361,38 @@ class RLVRMathVLMPipeline(BasePipeline):
                             value, self.actor_infer.worker_config.generating_args.num_return_sequences
                         )
 
-                    with Timer(name="cal_ref_log_probs_reward", logger=None) as cal_timer:
-                        if self.is_lora:
-                            batch.meta_info["disable_adapter"] = True
-                            batch.meta_info["is_offload_states"] = False
-                            ref_log_probs_refs: List[ray.ObjectRef] = self.actor_train.compute_log_probs(
-                                batch, blocking=False
-                            )
-                        else:
-                            ref_log_probs_refs: List[ray.ObjectRef] = self.reference.compute_log_probs(
-                                batch, blocking=False
-                            )
-                        rewards_refs: List[ray.ObjectRef] = self.reward.compute_rewards(batch, blocking=False)
+                    # Only compute reference log probabilities if use_reference_model is True
+                    if self.pipeline_config.use_reference_model:
+                        with Timer(name="cal_ref_log_probs_reward", logger=None) as cal_timer:
+                            if self.is_lora:
+                                batch.meta_info["disable_adapter"] = True
+                                batch.meta_info["is_offload_states"] = False
+                                ref_log_probs_refs: List[ray.ObjectRef] = self.actor_train.compute_log_probs(
+                                    batch, blocking=False
+                                )
+                            else:
+                                ref_log_probs_refs: List[ray.ObjectRef] = self.reference.compute_log_probs(
+                                    batch, blocking=False
+                                )
+                            rewards_refs: List[ray.ObjectRef] = self.reward.compute_rewards(batch, blocking=False)
 
-                        ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs)
-                        rewards = DataProto.materialize_concat(data_refs=rewards_refs)
+                            ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs)
+                            rewards = DataProto.materialize_concat(data_refs=rewards_refs)
 
-                        metrics.update(reduce_metrics(ref_log_probs.meta_info.pop("metrics", {})))
-                        metrics.update(reduce_metrics(rewards.meta_info.pop("metrics", {})))
-                        ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
-                        batch = batch.union(ref_log_probs)
-                        batch = batch.union(rewards)
-                    metrics["time/ref_log_probs_values_reward"] = cal_timer.last
+                            metrics.update(reduce_metrics(ref_log_probs.meta_info.pop("metrics", {})))
+                            metrics.update(reduce_metrics(rewards.meta_info.pop("metrics", {})))
+                            ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
+                            batch = batch.union(ref_log_probs)
+                            batch = batch.union(rewards)
+                        metrics["time/ref_log_probs_values_reward"] = cal_timer.last
+                    else:
+                        # Only compute rewards if not using reference model
+                        with Timer(name="cal_rewards_only", logger=None) as cal_timer:
+                            rewards_refs: List[ray.ObjectRef] = self.reward.compute_rewards(batch, blocking=False)
+                            rewards = DataProto.materialize_concat(data_refs=rewards_refs)
+                            metrics.update(reduce_metrics(rewards.meta_info.pop("metrics", {})))
+                            batch = batch.union(rewards)
+                        metrics["time/rewards_only"] = cal_timer.last
 
                     with Timer(name="cal_old_log_probs_values", logger=None) as cal_old_logpb_timer:
                         if self.is_lora:

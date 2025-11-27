@@ -313,13 +313,18 @@ class RLVRVLMPipeline(BasePipeline):
             resource_manager=self.resource_manager,
             worker_config=self.pipeline_config.actor_infer,
         )
-        self.reference: Any = Cluster(
-            name=self.pipeline_config.reference.name,
-            worker_cls=self.pipeline_config.reference.worker_cls,
-            resource_manager=self.resource_manager,
-            worker_config=self.pipeline_config.reference,
-        )
-        download_clusters = [self.actor_train, self.actor_infer, self.reference]
+        # Only create reference cluster if use_reference_model is True
+        self.reference = None
+        if self.pipeline_config.use_reference_model:
+            self.reference: Any = Cluster(
+                name=self.pipeline_config.reference.name,
+                worker_cls=self.pipeline_config.reference.worker_cls,
+                resource_manager=self.resource_manager,
+                worker_config=self.pipeline_config.reference,
+            )
+            download_clusters = [self.actor_train, self.actor_infer, self.reference]
+        else:
+            download_clusters = [self.actor_train, self.actor_infer]
         if self.pipeline_config.adv_estimator == "gae":
             self.critic: Any = Cluster(
                 name=self.pipeline_config.critic.name,
@@ -541,12 +546,14 @@ class RLVRVLMPipeline(BasePipeline):
                 # mark here to make megatron get_data_input broadcast with non_batch_tensor
                 batch.meta_info["_broadcast_non_tensor_batch"]= True
 
-                with Timer(name="cal_ref_log_probs", logger=None) as cal_ref_log_probs_timer:
-                    ref_log_probs = self.reference.compute_log_probs(batch, blocking=True)
-                    metrics_mgr.add_reduced_metrics(ref_log_probs.meta_info.pop("metrics", {}))
-                    ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
-                    batch = batch.union(ref_log_probs)
-                metrics_mgr.add_metric("time/ref_log_probs_values", cal_ref_log_probs_timer.last)
+                # Only compute reference log probabilities if use_reference_model is True
+                if self.pipeline_config.use_reference_model:
+                    with Timer(name="cal_ref_log_probs", logger=None) as cal_ref_log_probs_timer:
+                        ref_log_probs = self.reference.compute_log_probs(batch, blocking=True)
+                        metrics_mgr.add_reduced_metrics(ref_log_probs.meta_info.pop("metrics", {}))
+                        ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
+                        batch = batch.union(ref_log_probs)
+                    metrics_mgr.add_metric("time/ref_log_probs_values", cal_ref_log_probs_timer.last)
 
                 with Timer(name="cal_old_log_probs_values", logger=None) as cal_old_logpb_timer:
                     batch.meta_info["is_offload_states"] = False

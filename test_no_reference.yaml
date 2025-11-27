@@ -1,0 +1,73 @@
+# Test configuration to disable reference model
+exp_name: test_no_reference
+seed: 42
+output_dir: ./output/test_no_reference
+
+# Disable reference model
+use_reference_model: false
+
+# Model configuration
+pretrain: /path/to/model
+
+# Actor configurations
+actor_train:
+  name: actor_train
+  worker_cls: roll.pipeline.base_worker.ActorWorker
+  model_args:
+    model_name_or_path: /path/to/model
+    model_type: causal
+  training_args:
+    per_device_train_batch_size: 4
+    gradient_accumulation_steps: 1
+    learning_rate: 1e-6
+  device_mapping: [0]
+
+actor_infer:
+  name: actor_infer
+  worker_cls: roll.pipeline.base_worker.ActorWorker
+  model_args:
+    model_name_or_path: /path/to/model
+    model_type: causal
+  generating_args:
+    do_sample: true
+    temperature: 1.0
+    max_new_tokens: 512
+  device_mapping: [0]
+
+# Critic configuration
+critic:
+  name: critic
+  worker_cls: roll.pipeline.base_worker.ActorWorker
+  model_args:
+    model_name_or_path: /path/to/model
+    model_type: causal
+  training_args:
+    per_device_train_batch_size: 4
+    gradient_accumulation_steps: 1
+    learning_rate: 1e-6
+  device_mapping: [0]
+
+# Reference configuration (will be ignored when use_reference_model is false)
+reference:
+  name: reference
+  worker_cls: roll.pipeline.base_worker.ActorWorker
+  model_args:
+    model_name_or_path: /path/to/model
+    model_type: causal
+  device_mapping: [0]
+
+# Training parameters
+rollout_batch_size: 16
+max_steps: 10
+save_steps: 5
+logging_steps: 1
+eval_steps: 5
+
+# PPO parameters
+ppo_epochs: 1
+kl_penalty: "kl"
+init_kl_coef: 0.2
+
+# Data parameters
+prompt_length: 512
+response_length: 512
