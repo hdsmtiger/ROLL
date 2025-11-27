@@ -153,19 +153,21 @@ class DPOPipeline(BasePipeline):
             resource_manager=self.resource_manager,
             worker_config=self.pipeline_config.actor_train,
         )
-        self.reference: Any = Cluster(
-            name=self.pipeline_config.reference.name,
-            worker_cls=self.pipeline_config.reference.worker_cls,
-            resource_manager=self.resource_manager,
-            worker_config=self.pipeline_config.reference,
-        )
+        if not self.pipeline_config.disable_reference:
+            self.reference: Any = Cluster(
+                name=self.pipeline_config.reference.name,
+                worker_cls=self.pipeline_config.reference.worker_cls,
+                resource_manager=self.resource_manager,
+                worker_config=self.pipeline_config.reference,
+            )
 
         if self.val_dataset:
             val_pipeline_config = copy.deepcopy(self.pipeline_config)
             val_pipeline_config.is_use_additional_prompts = False
 
         refs: List[ray.ObjectRef] = []
-        refs.extend(self.reference.initialize(pipeline_config=self.pipeline_config, blocking=False))
+        if not self.pipeline_config.disable_reference:
+            refs.extend(self.reference.initialize(pipeline_config=self.pipeline_config, blocking=False))
 
         refs: List[ray.ObjectRef] = []
         refs.extend(self.actor_train.initialize(pipeline_config=self.pipeline_config, blocking=False))
@@ -199,7 +201,13 @@ class DPOPipeline(BasePipeline):
                     batch.meta_info = {"global_step": global_step, "is_offload_states": False, "is_offload_optimizer_states_in_train_step": False}
 
                     with Timer(name="cal_ref_log_probs", logger=None) as cal_ref_log_probs_timer:
-                        ref_log_probs = self.reference.compute_log_probs(batch, blocking=True)
+                        if self.pipeline_config.disable_reference:
+                            # Skip reference computation when disabled
+                            import torch
+                            ref_log_probs = DataProto.from_single_dict({"reference_log_probs": torch.zeros_like(batch.batch["log_probs"])})
+                            ref_log_probs.meta_info = {"metrics": {}}
+                        else:
+                            ref_log_probs = self.reference.compute_log_probs(batch, blocking=True)
                         metrics.update(ref_log_probs.meta_info.pop("metrics", {}))
                         ref_log_probs.rename(old_keys="log_probs", new_keys="reference_log_probs")
                         batch = batch.union(ref_log_probs)
@@ -244,7 +252,13 @@ class DPOPipeline(BasePipeline):
             batch: DataProto = DataProto.from_single_dict(batch_dict)
 
             with Timer(name="cal_ref_log_probs", logger=None) as cal_ref_log_probs_timer:
-                ref_log_probs = self.reference.compute_log_probs(batch, blocking=True)
+                if self.pipeline_config.disable_reference:
+                    # Skip reference computation when disabled
+                    import torch
+                    ref_log_probs = DataProto.from_single_dict({"reference_log_probs": torch.zeros_like(batch.batch["log_probs"])})
+                    ref_log_probs.meta_info = {"metrics": {}}
+                else:
+                    ref_log_probs = self.reference.compute_log_probs(batch, blocking=True)
                 metrics.update(ref_log_probs.meta_info.pop("metrics", {}))
                 ref_log_probs.rename(old_keys="log_probs", new_keys="reference_log_probs")
                 batch = batch.union(ref_log_probs)

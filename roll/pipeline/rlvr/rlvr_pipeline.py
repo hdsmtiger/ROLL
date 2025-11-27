@@ -215,8 +215,8 @@ class RLVRPipeline(BasePipeline):
             worker_config=self.pipeline_config.actor_infer,
         )
         download_clusters = [self.actor_train, self.actor_infer]
-        # use unwrapped model as reference for lora training
-        if not self.is_lora:
+        # use unwrapped model as reference for lora training, or skip if reference is disabled
+        if not self.is_lora and not self.pipeline_config.disable_reference:
             self.reference: Any = Cluster(
                 name=self.pipeline_config.reference.name,
                 worker_cls=self.pipeline_config.reference.worker_cls,
@@ -310,7 +310,7 @@ class RLVRPipeline(BasePipeline):
         refs.extend(self.actor_infer.initialize(pipeline_config=self.pipeline_config, blocking=False))
         ray.get(refs)
 
-        if not self.is_lora:
+        if not self.is_lora and not self.pipeline_config.disable_reference:
             refs.extend(self.reference.initialize(pipeline_config=self.pipeline_config, blocking=True))
 
         refs = []
@@ -539,7 +539,11 @@ class RLVRPipeline(BasePipeline):
             
 
                 with Timer(name="cal_ref_log_probs", logger=None) as cal_ref_log_probs_timer:
-                    if self.is_lora:
+                    if self.pipeline_config.disable_reference:
+                        # Skip reference computation when disabled
+                        ref_log_probs = DataProto.from_single_dict({"ref_log_probs": torch.zeros_like(batch.batch["log_probs"])})
+                        ref_log_probs.meta_info = {"metrics": {}}
+                    elif self.is_lora:
                         batch.meta_info["disable_adapter"] = True
                         batch.meta_info["is_offload_states"] = False
                         ref_log_probs = self.actor_train.compute_log_probs(batch, blocking=True)

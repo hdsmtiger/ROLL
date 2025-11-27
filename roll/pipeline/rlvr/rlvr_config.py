@@ -83,6 +83,12 @@ class RLVRConfig(PPOConfig):
     global_template: str = field(
         default=None,
         metadata={"help": "The template of the global."})
+    
+    # reference model control
+    disable_reference: bool = field(
+        default=False,
+        metadata={"help": "Whether to disable the reference model. If True, will use actor_train model with adapter disabled as reference for LoRA training, or skip reference computation entirely for non-LoRA training."}
+    )
     dataset_filter: DatasetFilterConfig = field(
         default_factory=DatasetFilterConfig,
         metadata={"help": "Configuration for filtering dataset by source and difficulty"},

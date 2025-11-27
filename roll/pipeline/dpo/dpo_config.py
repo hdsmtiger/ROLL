@@ -34,6 +34,12 @@ class DPOConfig(BaseConfig):
     reference: WorkerConfig = field(
         default_factory=WorkerConfig, metadata={"help": "Configuration for the reference role."}
     )
+    
+    # reference model control
+    disable_reference: bool = field(
+        default=False,
+        metadata={"help": "Whether to disable the reference model. If True, will use actor_train model with adapter disabled as reference for LoRA training, or skip reference computation entirely for non-LoRA training."}
+    )
 
     # dpo related
     ipo: bool = field(
