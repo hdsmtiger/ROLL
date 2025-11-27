@@ -156,7 +156,7 @@ class DPOPipeline(BasePipeline):
         self.reference: Any = None
         if self.pipeline_config.use_reference_model:
             self.reference = Cluster(
-                name=self.pipeline_config.reference.name,
+                name=self.pipeline_config.reference.name if self.pipeline_config.reference is not None else "disabled_reference",
                 worker_cls=self.pipeline_config.reference.worker_cls,
                 resource_manager=self.resource_manager,
                 worker_config=self.pipeline_config.reference,

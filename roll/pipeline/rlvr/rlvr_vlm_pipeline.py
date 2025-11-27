@@ -317,7 +317,7 @@ class RLVRVLMPipeline(BasePipeline):
         # use unwrapped model as reference for lora training
         if not self.is_lora and self.pipeline_config.use_reference_model:
             self.reference: Any = Cluster(
-                name=self.pipeline_config.reference.name,
+                name=self.pipeline_config.reference.name if self.pipeline_config.use_reference_model else "disabled_reference",
                 worker_cls=self.pipeline_config.reference.worker_cls,
                 resource_manager=self.resource_manager,
                 worker_config=self.pipeline_config.reference,
@@ -546,10 +546,11 @@ class RLVRVLMPipeline(BasePipeline):
                 batch.meta_info["_broadcast_non_tensor_batch"]= True
 
                 with Timer(name="cal_ref_log_probs", logger=None) as cal_ref_log_probs_timer:
-                    ref_log_probs = self.reference.compute_log_probs(batch, blocking=True) if self.reference is not None else None
-                    metrics_mgr.add_reduced_metrics(ref_log_probs.meta_info.pop("metrics", {}))
-                    ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
-                    batch = batch.union(ref_log_probs)
+                    if self.reference is not None:
+                        ref_log_probs = self.reference.compute_log_probs(batch, blocking=True)
+                        metrics_mgr.add_reduced_metrics(ref_log_probs.meta_info.pop("metrics", {}))
+                        ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
+                        batch = batch.union(ref_log_probs)
                 metrics_mgr.add_metric("time/ref_log_probs_values", cal_ref_log_probs_timer.last)
 
                 with Timer(name="cal_old_log_probs_values", logger=None) as cal_old_logpb_timer:

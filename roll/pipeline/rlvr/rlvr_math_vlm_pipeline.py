@@ -225,7 +225,7 @@ class RLVRMathVLMPipeline(BasePipeline):
         # use unwrapped model as reference for lora training
         if not self.is_lora and self.pipeline_config.use_reference_model:
             self.reference: Any = Cluster(
-                name=self.pipeline_config.reference.name,
+                name=self.pipeline_config.reference.name if self.pipeline_config.use_reference_model else "disabled_reference",
                 worker_cls=self.pipeline_config.reference.worker_cls,
                 resource_manager=self.resource_manager,
                 worker_config=self.pipeline_config.reference,
@@ -378,13 +378,18 @@ class RLVRMathVLMPipeline(BasePipeline):
                                 ref_log_probs_refs = []
                         rewards_refs: List[ray.ObjectRef] = self.reward.compute_rewards(batch, blocking=False)
 
-                        ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs)
-                        rewards = DataProto.materialize_concat(data_refs=rewards_refs)
+                        if ref_log_probs_refs:
+                            ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs)
+                            rewards = DataProto.materialize_concat(data_refs=rewards_refs)
 
-                        metrics.update(reduce_metrics(ref_log_probs.meta_info.pop("metrics", {})))
-                        metrics.update(reduce_metrics(rewards.meta_info.pop("metrics", {})))
-                        ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
-                        batch = batch.union(ref_log_probs)
+                            metrics.update(reduce_metrics(ref_log_probs.meta_info.pop("metrics", {})))
+                            metrics.update(reduce_metrics(rewards.meta_info.pop("metrics", {})))
+                            ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
+                            batch = batch.union(ref_log_probs)
+                        else:
+                            rewards = DataProto.materialize_concat(data_refs=rewards_refs)
+                            metrics.update(reduce_metrics(rewards.meta_info.pop("metrics", {})))
+                            batch = batch.union(rewards)
                         batch = batch.union(rewards)
                     metrics["time/ref_log_probs_values_reward"] = cal_timer.last
 

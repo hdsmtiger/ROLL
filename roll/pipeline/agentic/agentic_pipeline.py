@@ -64,7 +64,7 @@ class AgenticPipeline(BasePipeline):
         download_clusters = [self.actor_train, self.actor_infer]
         if self.pipeline_config.use_reference_model:
             self.reference = Cluster(
-                name=self.pipeline_config.reference.name,
+                name=self.pipeline_config.reference.name if self.pipeline_config.reference is not None else "disabled_reference",
                 worker_cls=self.pipeline_config.reference.worker_cls,
                 resource_manager=self.resource_manager,
                 worker_config=self.pipeline_config.reference,
@@ -177,12 +177,15 @@ class AgenticPipeline(BasePipeline):
                 metrics.update(reduce_metrics(batch.meta_info.pop("metrics", {})))
 
                 with Timer(name="cal_ref_log_probs", logger=None) as cal_timer:
-                    ref_log_probs_refs: List[ray.ObjectRef] = self.reference.compute_log_probs(batch, blocking=False)
-                    ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs)
-                    ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
-                    batch = batch.union(ref_log_probs)
-                    avg_ref_log_prob = masked_mean(batch.batch["ref_log_probs"], batch.batch["response_mask"][:, 1:])
-                    metrics.update(reduce_metrics(ref_log_probs.meta_info.pop("metrics", {})))
+                    if self.reference is not None:
+                        ref_log_probs_refs: List[ray.ObjectRef] = self.reference.compute_log_probs(batch, blocking=False)
+                        ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs)
+                        ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
+                        batch = batch.union(ref_log_probs)
+                        avg_ref_log_prob = masked_mean(batch.batch["ref_log_probs"], batch.batch["response_mask"][:, 1:])
+                        metrics.update(reduce_metrics(ref_log_probs.meta_info.pop("metrics", {})))
+                    else:
+                        avg_ref_log_prob = 0.0
                     metrics.update({"critic/ref_log_prob/mean": avg_ref_log_prob.item()})
                 metrics["time/ref_log_probs_values_reward"] = cal_timer.last
 

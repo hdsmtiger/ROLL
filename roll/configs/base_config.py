@@ -394,11 +394,12 @@ class PPOConfig(BaseConfig):
         if (
             self.actor_train.model_args.model_name_or_path is None
             or self.actor_infer.model_args.model_name_or_path is None
-            or self.reference.model_args.model_name_or_path is None
+            or (self.use_reference_model and self.reference.model_args.model_name_or_path is None)
         ):
             self.actor_train.model_args.model_name_or_path = self.pretrain
             self.actor_infer.model_args.model_name_or_path = self.pretrain
-            self.reference.model_args.model_name_or_path = self.pretrain
+            if self.use_reference_model:
+                self.reference.model_args.model_name_or_path = self.pretrain
 
         if self.critic.model_args.model_name_or_path is None:
             self.critic.model_args.model_name_or_path = self.reward_pretrain
@@ -409,7 +410,8 @@ class PPOConfig(BaseConfig):
 
         self.actor_infer.name = "actor_infer"
         self.actor_train.name = "actor_train"
-        self.reference.name = "reference"
+        if self.use_reference_model:
+            self.reference.name = "reference"
         self.critic.name = "critic"
 
     def set_max_steps(self, max_steps: int):
