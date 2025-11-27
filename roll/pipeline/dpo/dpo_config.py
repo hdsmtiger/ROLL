@@ -59,21 +59,23 @@ class DPOConfig(BaseConfig):
 
         if (
             self.actor_train.model_args.model_name_or_path is None
-            or self.reference.model_args.model_name_or_path is None
+            or (self.use_reference_model and self.reference.model_args.model_name_or_path is None)
         ):
             self.actor_train.model_args.model_name_or_path = self.pretrain
-            self.reference.model_args.model_name_or_path = self.pretrain
+            if self.use_reference_model:
+                self.reference.model_args.model_name_or_path = self.pretrain
 
         # default worker_cls
         if self.actor_train.worker_cls is None:
             self.actor_train.worker_cls = "roll.pipeline.dpo.actor_worker.ActorWorker"
-        if self.reference.worker_cls is None:
+        if self.use_reference_model and self.reference.worker_cls is None:
             self.reference.worker_cls = "roll.pipeline.dpo.actor_worker.ActorWorker"
 
         self.actor_train.training_args.output_dir = self.output_dir
 
         self.actor_train.name = "actor_train"
-        self.reference.name = "reference"
+        if self.use_reference_model:
+            self.reference.name = "reference"
 
     def set_max_steps(self, max_steps: int):
         self.max_steps = max_steps

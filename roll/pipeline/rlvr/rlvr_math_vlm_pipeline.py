@@ -378,13 +378,14 @@ class RLVRMathVLMPipeline(BasePipeline):
                                 ref_log_probs_refs = []
                         rewards_refs: List[ray.ObjectRef] = self.reward.compute_rewards(batch, blocking=False)
 
-                        ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs)
+                        ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs) if ref_log_probs_refs else None
                         rewards = DataProto.materialize_concat(data_refs=rewards_refs)
 
-                        metrics.update(reduce_metrics(ref_log_probs.meta_info.pop("metrics", {})))
+                        if ref_log_probs is not None:
+                            metrics.update(reduce_metrics(ref_log_probs.meta_info.pop("metrics", {})))
+                            ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
+                            batch = batch.union(ref_log_probs)
                         metrics.update(reduce_metrics(rewards.meta_info.pop("metrics", {})))
-                        ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
-                        batch = batch.union(ref_log_probs)
                         batch = batch.union(rewards)
                     metrics["time/ref_log_probs_values_reward"] = cal_timer.last
 
