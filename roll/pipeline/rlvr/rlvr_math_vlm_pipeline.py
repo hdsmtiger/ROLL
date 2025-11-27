@@ -221,14 +221,16 @@ class RLVRMathVLMPipeline(BasePipeline):
             resource_manager=self.resource_manager,
             worker_config=self.pipeline_config.actor_infer,
         )
+        download_clusters = [self.actor_train, self.actor_infer]
         # use unwrapped model as reference for lora training
-        if not self.is_lora:
+        if not self.is_lora and self.pipeline_config.use_reference_model:
             self.reference: Any = Cluster(
                 name=self.pipeline_config.reference.name,
                 worker_cls=self.pipeline_config.reference.worker_cls,
                 resource_manager=self.resource_manager,
                 worker_config=self.pipeline_config.reference,
             )
+            download_clusters.append(self.reference)
         self.rewards: Dict[str, Any] = {
             key: Cluster(
                 name=f"reward-{key}",
@@ -265,6 +267,7 @@ class RLVRMathVLMPipeline(BasePipeline):
 
         refs = []
         if not self.is_lora:
+            if self.reference is not None:
             refs.extend(self.reference.initialize(pipeline_config=self.pipeline_config, blocking=False))
         refs.extend(self.reward.initialize(pipeline_config=self.pipeline_config, blocking=False))
         ray.get(refs)
@@ -367,9 +370,12 @@ class RLVRMathVLMPipeline(BasePipeline):
                                 batch, blocking=False
                             )
                         else:
-                            ref_log_probs_refs: List[ray.ObjectRef] = self.reference.compute_log_probs(
-                                batch, blocking=False
-                            )
+                            if self.reference is not None:
+                                ref_log_probs_refs: List[ray.ObjectRef] = self.reference.compute_log_probs(
+                                    batch, blocking=False
+                                )
+                            else:
+                                ref_log_probs_refs = []
                         rewards_refs: List[ray.ObjectRef] = self.reward.compute_rewards(batch, blocking=False)
 
                         ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs)

@@ -60,14 +60,16 @@ class AgenticPipeline(BasePipeline):
             resource_manager=self.resource_manager,
             worker_config=self.pipeline_config.actor_infer,
         )
-        self.reference: Any = Cluster(
-            name=self.pipeline_config.reference.name,
-            worker_cls=self.pipeline_config.reference.worker_cls,
-            resource_manager=self.resource_manager,
-            worker_config=self.pipeline_config.reference,
-        )
-
-        download_clusters = [self.actor_train, self.actor_infer, self.reference]
+        self.reference: Any = None
+        download_clusters = [self.actor_train, self.actor_infer]
+        if self.pipeline_config.use_reference_model:
+            self.reference = Cluster(
+                name=self.pipeline_config.reference.name,
+                worker_cls=self.pipeline_config.reference.worker_cls,
+                resource_manager=self.resource_manager,
+                worker_config=self.pipeline_config.reference,
+            )
+            download_clusters.append(self.reference)
         if self.pipeline_config.adv_estimator == "gae":
             self.critic: Any = Cluster(
                 name=self.pipeline_config.critic.name,
@@ -110,7 +112,9 @@ class AgenticPipeline(BasePipeline):
 
         self.actor_infer.initialize(pipeline_config=self.pipeline_config, blocking=True)
 
-        refs.extend(self.reference.initialize(pipeline_config=self.pipeline_config, blocking=True))
+        refs: List[ray.ObjectRef] = []
+        if self.reference is not None:
+            refs.extend(self.reference.initialize(pipeline_config=self.pipeline_config, blocking=True))
         self.set_model_update_pair(
             src_cluster=self.actor_train,
             tgt_cluster=self.actor_infer,
