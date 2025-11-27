@@ -106,7 +106,7 @@ class AgenticConfig(PPOConfig):
             self.actor_train.worker_cls = "roll.pipeline.base_worker.ActorWorker"
         if self.actor_infer.worker_cls is None:
             self.actor_infer.worker_cls = "roll.pipeline.base_worker.ActorWorker"
-        if self.reference.worker_cls is None:
+        if self.use_reference_model and self.reference.worker_cls is None:
             self.reference.worker_cls = "roll.pipeline.base_worker.ActorWorker"
         if self.critic.worker_cls is None:
             self.critic.worker_cls = "roll.pipeline.base_worker.CriticWorker"

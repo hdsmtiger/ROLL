@@ -1,0 +1,60 @@
+# 示例配置文件：关闭Reference Model
+# 这个配置展示了如何在ROLL中禁用Reference Model以节省资源
+
+defaults:
+  - ../config/deepspeed_zero3@_here_
+
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+
+exp_name: "qwen2.5-7B-rlvr-no-reference"
+seed: 42
+logging_dir: ./output/logs
+output_dir: ./output
+system_envs:
+  USE_MODELSCOPE: '1'
+
+# 关闭Reference Model的关键配置
+use_reference_model: false
+
+# 模型配置
+pretrain: "Qwen/Qwen2.5-7B"
+reward_pretrain: "Qwen/Qwen2.5-7B"
+
+# Actor配置
+actor_train:
+  model_args:
+    model_name_or_path: ${pretrain}
+    dtype: bf16
+  training_args:
+    output_dir: ${output_dir}
+    learning_rate: 1e-6
+    per_device_train_batch_size: 1
+    gradient_accumulation_steps: 16
+    max_steps: 500
+    save_steps: 50
+    logging_steps: 1
+
+actor_infer:
+  model_args:
+    model_name_or_path: ${pretrain}
+    dtype: bf16
+  infer_batch_size: 4
+
+# Critic配置（如果使用GAE）
+critic:
+  model_args:
+    model_name_or_path: ${reward_pretrain}
+    dtype: bf16
+
+# 数据配置
+data_args:
+  dataset_name: "your_dataset_name"
+  max_length: 2048
+
+# 其他配置
+max_steps: 500
+save_steps: 50
+logging_steps: 1

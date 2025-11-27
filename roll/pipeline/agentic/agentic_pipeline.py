@@ -177,13 +177,14 @@ class AgenticPipeline(BasePipeline):
                 metrics.update(reduce_metrics(batch.meta_info.pop("metrics", {})))
 
                 with Timer(name="cal_ref_log_probs", logger=None) as cal_timer:
-                    ref_log_probs_refs: List[ray.ObjectRef] = self.reference.compute_log_probs(batch, blocking=False)
-                    ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs)
-                    ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
-                    batch = batch.union(ref_log_probs)
-                    avg_ref_log_prob = masked_mean(batch.batch["ref_log_probs"], batch.batch["response_mask"][:, 1:])
-                    metrics.update(reduce_metrics(ref_log_probs.meta_info.pop("metrics", {})))
-                    metrics.update({"critic/ref_log_prob/mean": avg_ref_log_prob.item()})
+                    if self.reference is not None:
+                        ref_log_probs_refs: List[ray.ObjectRef] = self.reference.compute_log_probs(batch, blocking=False)
+                        ref_log_probs = DataProto.materialize_concat(data_refs=ref_log_probs_refs)
+                        ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
+                        batch = batch.union(ref_log_probs)
+                        avg_ref_log_prob = masked_mean(batch.batch["ref_log_probs"], batch.batch["response_mask"][:, 1:])
+                        metrics.update(reduce_metrics(ref_log_probs.meta_info.pop("metrics", {})))
+                        metrics.update({"critic/ref_log_prob/mean": avg_ref_log_prob.item()})
                 metrics["time/ref_log_probs_values_reward"] = cal_timer.last
 
                 with Timer(name="cal_old_log_probs_values", logger=None) as cal_old_logpb_timer:

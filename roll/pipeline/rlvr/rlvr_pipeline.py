@@ -555,9 +555,10 @@ class RLVRPipeline(BasePipeline):
                             )
                             metrics_mgr.add_metrics(dynamic_batching_metrics)
                         ref_log_probs = self.reference.compute_log_probs(batch, blocking=True) if self.reference is not None else None
-                    metrics_mgr.add_reduced_metrics(ref_log_probs.meta_info.pop("metrics", {}))
-                    ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
-                    batch = batch.union(ref_log_probs)
+                    if ref_log_probs is not None:
+                        metrics_mgr.add_reduced_metrics(ref_log_probs.meta_info.pop("metrics", {}))
+                        ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
+                        batch = batch.union(ref_log_probs)
                 metrics_mgr.add_metric("time/ref_log_probs_values", cal_ref_log_probs_timer.last)
 
                 with Timer(name="cal_old_log_probs_values", logger=None) as cal_old_logpb_timer:

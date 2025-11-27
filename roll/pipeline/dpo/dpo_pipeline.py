@@ -261,12 +261,18 @@ class DPOPipeline(BasePipeline):
                 batch = batch.union(log_probs)
             metrics["time/cal_log_probs"] = cal_log_probs_timer.last
 
-            reference_chosen_logps, reference_rejected_logps = get_logps(
-                batch.batch["reference_log_probs"], batch.batch["attention_mask"], batch.batch["prompt_id_lens"]
-            )
             chosen_logps, rejected_logps = get_logps(
                 batch.batch["log_probs"], batch.batch["attention_mask"], batch.batch["prompt_id_lens"]
             )
+            
+            if "reference_log_probs" in batch.batch:
+                reference_chosen_logps, reference_rejected_logps = get_logps(
+                    batch.batch["reference_log_probs"], batch.batch["attention_mask"], batch.batch["prompt_id_lens"]
+                )
+            else:
+                # When reference model is disabled, use zeros as reference log probabilities
+                reference_chosen_logps = torch.zeros_like(chosen_logps)
+                reference_rejected_logps = torch.zeros_like(rejected_logps)
 
             ipo = batch.meta_info.get("ipo", False)
             beta = batch.meta_info.get("beta", 0.1)
