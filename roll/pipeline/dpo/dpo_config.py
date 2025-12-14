@@ -34,6 +34,9 @@ class DPOConfig(BaseConfig):
     reference: WorkerConfig = field(
         default_factory=WorkerConfig, metadata={"help": "Configuration for the reference role."}
     )
+    disable_reference: bool = field(
+        default=False, metadata={"help": "Whether to disable the reference model."}
+    )
 
     # dpo related
     ipo: bool = field(
@@ -59,15 +62,16 @@ class DPOConfig(BaseConfig):
 
         if (
             self.actor_train.model_args.model_name_or_path is None
-            or self.reference.model_args.model_name_or_path is None
+            or (not self.disable_reference and self.reference.model_args.model_name_or_path is None)
         ):
             self.actor_train.model_args.model_name_or_path = self.pretrain
-            self.reference.model_args.model_name_or_path = self.pretrain
+            if not self.disable_reference:
+                self.reference.model_args.model_name_or_path = self.pretrain
 
         # default worker_cls
         if self.actor_train.worker_cls is None:
             self.actor_train.worker_cls = "roll.pipeline.dpo.actor_worker.ActorWorker"
-        if self.reference.worker_cls is None:
+        if not self.disable_reference and self.reference.worker_cls is None:
             self.reference.worker_cls = "roll.pipeline.dpo.actor_worker.ActorWorker"
 
         self.actor_train.training_args.output_dir = self.output_dir

@@ -215,8 +215,8 @@ class RLVRPipeline(BasePipeline):
             worker_config=self.pipeline_config.actor_infer,
         )
         download_clusters = [self.actor_train, self.actor_infer]
-        # use unwrapped model as reference for lora training
-        if not self.is_lora:
+        # use unwrapped model as reference for lora training or when reference is not disabled
+        if not self.is_lora and not self.pipeline_config.disable_reference:
             self.reference: Any = Cluster(
                 name=self.pipeline_config.reference.name,
                 worker_cls=self.pipeline_config.reference.worker_cls,
@@ -310,7 +310,7 @@ class RLVRPipeline(BasePipeline):
         refs.extend(self.actor_infer.initialize(pipeline_config=self.pipeline_config, blocking=False))
         ray.get(refs)
 
-        if not self.is_lora:
+        if not self.is_lora and not self.pipeline_config.disable_reference:
             refs.extend(self.reference.initialize(pipeline_config=self.pipeline_config, blocking=True))
 
         refs = []
@@ -544,16 +544,29 @@ class RLVRPipeline(BasePipeline):
                         batch.meta_info["is_offload_states"] = False
                         ref_log_probs = self.actor_train.compute_log_probs(batch, blocking=True)
                     else:
-                        if self.pipeline_config.reference.use_dynamic_batching_in_infer:
-                            batch, dynamic_batching_metrics = dynamic_batching_shard(
-                                batch, 
-                                self.reference.dp_size,
-                                self.pipeline_config.reference.max_tokens_per_microbatch_in_infer,
-                                self.pipeline_config.reference.sequence_length_round_in_infer,
-                                "reference/compute_log_probs",
-                            )
-                            metrics_mgr.add_metrics(dynamic_batching_metrics)
-                        ref_log_probs = self.reference.compute_log_probs(batch, blocking=True)
+                        if not self.pipeline_config.disable_reference:
+                            if self.pipeline_config.reference.use_dynamic_batching_in_infer:
+                                batch, dynamic_batching_metrics = dynamic_batching_shard(
+                                    batch, 
+                                    self.reference.dp_size,
+                                    self.pipeline_config.reference.max_tokens_per_microbatch_in_infer,
+                                    self.pipeline_config.reference.sequence_length_round_in_infer,
+                                    "reference/compute_log_probs",
+                                )
+                                metrics_mgr.add_metrics(dynamic_batching_metrics)
+                            ref_log_probs = self.reference.compute_log_probs(batch, blocking=True)
+                        else:
+                            # When reference is disabled, use actor_train's log probs as reference
+                            if self.pipeline_config.actor_train.use_dynamic_batching_in_infer:
+                                batch, dynamic_batching_metrics = dynamic_batching_shard(
+                                    batch, 
+                                    self.actor_train.dp_size,
+                                    self.pipeline_config.actor_train.max_tokens_per_microbatch_in_infer,
+                                    self.pipeline_config.actor_train.sequence_length_round_in_infer,
+                                    "actor_train/compute_log_probs",
+                                )
+                                metrics_mgr.add_metrics(dynamic_batching_metrics)
+                            ref_log_probs = self.actor_train.compute_log_probs(batch, blocking=True)
                     metrics_mgr.add_reduced_metrics(ref_log_probs.meta_info.pop("metrics", {}))
                     ref_log_probs.rename(old_keys="log_probs", new_keys="ref_log_probs")
                     batch = batch.union(ref_log_probs)
